@@ -55,8 +55,34 @@ enum States {
 };
 States CarState=Manual; 
 
+void _PauseBlock();
+void _FollowLine();
+
+// MANUAL CONTROL & BLUETOOTH (Arduino Mega 2560 Serial1: RX1=19, TX1=18)
+#define BT_SERIAL Serial1
+#define BT_BAUD 9600
+int manualSpeed = forwardspeed;
+
+void _ManualControl();
+void MoveBackward();
+void StopMotors();
+void ProcessManualCommand(char cmd, Stream& port);
+void PrintManualHelp(Stream& port);
+
 void setup() {
   Serial.begin(115200);
+  BT_SERIAL.begin(BT_BAUD);
+
+  pinMode(EnA, OUTPUT);
+  pinMode(EnB, OUTPUT);
+  pinMode(In1, OUTPUT);
+  pinMode(In2, OUTPUT);
+  pinMode(In3, OUTPUT);
+  pinMode(In4, OUTPUT);
+  StopMotors();
+
+  PrintManualHelp(Serial);
+  PrintManualHelp(BT_SERIAL);
 }
 
 void loop() {
@@ -73,6 +99,7 @@ void loop() {
   case EndBlock:
     break;
   case Manual:
+    _ManualControl();
     break;
   }
 
@@ -104,6 +131,11 @@ void StopMotors(){
 void MoveForward(){
   SetMotorRaw(Motor1, FORWARD, forwardspeed);
   SetMotorRaw(Motor2, FORWARD, forwardspeed);
+}
+
+void MoveBackward(){
+  SetMotorRaw(Motor1, BACKWARD, manualSpeed);
+  SetMotorRaw(Motor2, BACKWARD, manualSpeed);
 }
 
 void TurnLeft(){
@@ -174,6 +206,111 @@ void _CheckBlock(){
 
 void _PauseBlock(){
   
+}
+
+
+// BELOW ARE ONLY MANUAL COMMAND FUNCTIONS
+void PrintManualHelp(Stream& port){
+  port.println(F("=== Manual Control Ready ==="));
+  port.println(F("W/F: Forward | S/B: Backward | A/L: Left | D/R: Right"));
+  port.println(F("X/Space/0: Stop | +/-: Speed +/-25 | 1-9: Speed preset | H/?: Help"));
+}
+
+void ProcessManualCommand(char cmd, Stream& port){
+  if (cmd == '\r' || cmd == '\n') {
+    return;
+  }
+
+  switch (cmd) {
+    case 'w':
+    case 'W':
+    case 'f':
+    case 'F':
+      SetMotorRaw(Motor1, FORWARD, manualSpeed);
+      SetMotorRaw(Motor2, FORWARD, manualSpeed);
+      port.print(F("Forward @ "));
+      port.println(manualSpeed);
+      break;
+
+    case 's':
+    case 'S':
+    case 'b':
+    case 'B':
+      MoveBackward();
+      port.print(F("Backward @ "));
+      port.println(manualSpeed);
+      break;
+
+    case 'a':
+    case 'A':
+    case 'l':
+    case 'L':
+      SetMotorRaw(Motor1, FORWARD, manualSpeed);
+      SetMotorRaw(Motor2, BACKWARD, manualSpeed);
+      port.print(F("Turn Left @ "));
+      port.println(manualSpeed);
+      break;
+
+    case 'd':
+    case 'D':
+    case 'r':
+    case 'R':
+      SetMotorRaw(Motor1, BACKWARD, manualSpeed);
+      SetMotorRaw(Motor2, FORWARD, manualSpeed);
+      port.print(F("Turn Right @ "));
+      port.println(manualSpeed);
+      break;
+
+    case 'x':
+    case 'X':
+    case ' ':
+    case '0':
+      StopMotors();
+      port.println(F("Stopped"));
+      break;
+
+    case '+':
+    case '=':
+      manualSpeed = min(255, manualSpeed + 25);
+      port.print(F("Speed: "));
+      port.println(manualSpeed);
+      break;
+
+    case '-':
+    case '_':
+      manualSpeed = max(0, manualSpeed - 25);
+      port.print(F("Speed: "));
+      port.println(manualSpeed);
+      break;
+
+    case '1' ... '9':
+      manualSpeed = map(cmd - '0', 1, 9, 50, 255);
+      port.print(F("Speed: "));
+      port.println(manualSpeed);
+      break;
+
+    case 'h':
+    case 'H':
+    case '?':
+      PrintManualHelp(port);
+      break;
+
+    default:
+      port.print(F("Unknown cmd: "));
+      port.println(cmd);
+      break;
+  }
+}
+
+void _ManualControl(){
+  while (Serial.available() > 0) {
+    char cmd = static_cast<char>(Serial.read());
+    ProcessManualCommand(cmd, Serial);
+  }
+  while (BT_SERIAL.available() > 0) {
+    char cmd = static_cast<char>(BT_SERIAL.read());
+    ProcessManualCommand(cmd, BT_SERIAL);
+  }
 }
 
 
